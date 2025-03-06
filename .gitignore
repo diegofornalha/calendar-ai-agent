@@ -1,0 +1,62 @@
+# Arquivos de ambiente e configuração local
+.env
+.env.local
+*.env
+
+# Arquivos de Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Arquivos temporários
+*.bak
+*.swp
+*.tmp
+*.temp
+.DS_Store
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Arquivos de IDE
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+# Logs e databases
+*.log
+*.sqlite
+*.db
+
+# Arquivos de teste
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Arquivos de token e credenciais
+token.json
+credentials.json
+*_credentials.json
+*_token.json 
