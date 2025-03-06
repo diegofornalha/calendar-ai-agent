@@ -39,6 +39,47 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Verificar URL hash para /#config
+if 'query_params' not in st.session_state:
+    st.session_state.query_params = st.experimental_get_query_params()
+
+# Capturar hash da URL via Javascript
+config_detector_code = """
+<script>
+// Função para verificar o hash na URL
+function checkHash() {
+    // Se o hash for #config, armazenar no session storage
+    if (window.location.hash === '#config') {
+        sessionStorage.setItem('show_config', 'true');
+        // Não redirecionar para remover o hash, apenas para manter o #config na URL
+        // window.location.href = window.location.pathname;
+    }
+    
+    // Verificar se devemos mostrar a configuração
+    if (sessionStorage.getItem('show_config') === 'true') {
+        // Enviar mensagem para o Streamlit
+        window.parent.postMessage({
+            type: 'streamlit:setComponentValue',
+            value: true
+        }, '*');
+    }
+}
+
+// Executar ao carregar a página
+checkHash();
+// Executar quando o hash mudar
+window.addEventListener('hashchange', checkHash);
+</script>
+"""
+
+# Componente para detectar #config na URL
+config_detector = st.components.v1.html(config_detector_code, height=0, width=0)
+
+# Verificar se as configurações avançadas devem ser mostradas
+show_advanced_config = bool(config_detector) or st.session_state.get('show_advanced_config', False)
+if show_advanced_config:
+    st.session_state.show_advanced_config = True
+
 # Verificar se a configuração do Firebase está na sessão
 if 'firebase_config_shown' not in st.session_state:
     st.session_state.firebase_config_shown = False
@@ -62,61 +103,114 @@ if 'selected_api' not in st.session_state:
 if 'gemini_credits' not in st.session_state:
     st.session_state.gemini_credits = 5  # Cada usuário tem direito a 5 créditos
 
-# Sidebar - Interface com opção de configurações avançadas
+# Sidebar para autenticação e navegação
 with st.sidebar:
-    st.title("📅 Calendário IA")
-    
-    # Tabs para Autenticação e Configurações
-    auth_tab, settings_tab = st.tabs(["Autenticação", "Configurações"])
-    
-    with auth_tab:
-        # Componente de autenticação Firebase simplificado
-        firebase_auth.firebase_login_button()
-    
-    with settings_tab:
-        # Mostrar opções de configuração avançada
-        st.subheader("Configurações Avançadas")
-        st.info("Aqui você pode personalizar todas as configurações do aplicativo.")
+    # Verificar se há usuário autenticado
+    if 'firebase_user' not in st.session_state or st.session_state.firebase_user is None:
+        st.title("Calendário IA")
         
-        # Opção para mostrar configurações do Firebase
-        if st.checkbox("Configurar Firebase", value=st.session_state.firebase_config_shown):
-            st.session_state.firebase_config_shown = True
-            firebase_auth.firebase_config_component(form_key_suffix="sidebar")
+        # Mostrar componente de login do Firebase
+        firebase_auth.firebase_login_button()
+        
+        # Mostrar link para configurações avançadas
+        if st.button("⚙️ Configurações Avançadas"):
+            # Modificar para usar diretamente o hash #config
+            st.markdown('<a href="#config" target="_self">Ir para configurações</a>', unsafe_allow_html=True)
+    else:
+        # Exibir informações do usuário logado
+        st.title("Calendário IA")
+        
+        # Mostrar ícone do usuário e nome
+        if st.session_state.firebase_user.get('isAnonymous', False):
+            st.write("👤 Modo Demonstração")
         else:
-            st.session_state.firebase_config_shown = False
-            st.write("Marque a caixa acima para configurar o Firebase.")
+            user_name = st.session_state.firebase_user.get('displayName', st.session_state.firebase_user.get('email', 'Usuário'))
+            st.write(f"👤 {user_name}")
+        
+        # Botão de logout
+        if st.button("Sair"):
+            # Limpar dados de sessão
+            st.session_state.firebase_user = None
+            st.session_state.firebase_token = None
             
-        # Opção para ver as informações da API do Google Calendar
-        with st.expander("Informações da API do Google Calendar"):
-            st.write("""
-            ### API do Google Calendar
+            # Limpar tokens do Google se existirem
+            if 'google_access_token' in st.session_state:
+                del st.session_state.google_access_token
             
-            Este aplicativo utiliza a API do Google Calendar para gerenciar eventos e acessar seu calendário.
-            
-            #### Endpoints Principais:
-            - **Eventos**: `/calendars/calendarId/events`
-            - **Calendários**: `/users/me/calendarList`
-            - **Disponível/Ocupado**: `/freeBusy`
-            
-            #### Documentação Completa:
-            [Documentação oficial da API do Google Calendar](https://developers.google.com/calendar/api/v3/reference)
-            
-            #### Como Configurar:
-            1. Crie um projeto no [Google Cloud Console](https://console.cloud.google.com/)
-            2. Habilite a API do Google Calendar
-            3. Configure as credenciais OAuth 2.0
-            4. Defina os escopos necessários (ex: `https://www.googleapis.com/auth/calendar`)
-            
-            #### Permissões Necessárias:
-            - `calendar.events.read` - Para ler eventos do calendário
-            - `calendar.events.write` - Para criar e atualizar eventos
-            - `calendar.settings.read` - Para ler configurações do calendário
-            """)
+            # Recarregar a página
+            st.rerun()
+        
+        # Mostrar link para configurações avançadas
+        if not st.session_state.get('show_advanced_config', False):
+            st.markdown('<a href="#config" target="_self">⚙️ Configurações Avançadas</a>', unsafe_allow_html=True)
+        elif st.session_state.get('show_advanced_config', False) and st.button("🔙 Voltar ao aplicativo"):
+            st.session_state.show_advanced_config = False
+            st.rerun()
 
 # Conteúdo principal
-if 'firebase_user' not in st.session_state or not st.session_state.firebase_user:
-    # Usuário não autenticado
-    st.title("📅 Calendário IA Customizável")
+if st.session_state.get('show_advanced_config', False):
+    # Mostrar configurações avançadas
+    st.header("⚙️ Configurações Avançadas")
+    
+    # Criar abas para diferentes tipos de configuração
+    firebase_tab, api_tab, debug_tab = st.tabs(["Firebase", "APIs", "Depuração"])
+    
+    # Aba Firebase
+    with firebase_tab:
+        firebase_auth.firebase_config_component(form_key_suffix="adv_config")
+        
+        # Exibir o Firebase Admin SDK se disponível
+        if firebase_admin_config_available:
+            st.subheader("Firebase Admin SDK")
+            firebase_admin_config.admin_config_component()
+    
+    # Aba APIs
+    with api_tab:
+        st.subheader("Configuração de APIs")
+        
+        # API do Google Calendar
+        st.write("### Google Calendar API")
+        st.write("""
+        A API do Google Calendar permite integração com o calendário do usuário.
+        Você pode obter credenciais no [Google Cloud Console](https://console.cloud.google.com/).
+        """)
+        
+        # Gemini API
+        st.write("### Gemini API")
+        gemini_key = st.text_input(
+            "Chave API do Gemini",
+            value=os.environ.get("GEMINI_API_KEY", ""),
+            type="password",
+            help="Obtenha sua chave API em https://makersuite.google.com/app/apikey"
+        )
+        
+        if st.button("Salvar Chave Gemini"):
+            # Salvar na sessão
+            st.session_state.gemini_api_key = gemini_key
+            st.success("Chave API salva com sucesso!")
+    
+    # Aba de depuração
+    with debug_tab:
+        st.subheader("Informações de Depuração")
+        
+        # Mostrar informações do ambiente
+        st.write("### Ambiente")
+        st.code(f"""
+        Streamlit Cloud: {IS_STREAMLIT_CLOUD}
+        Firebase Admin SDK disponível: {firebase_admin_config_available}
+        Gemini Integration disponível: {genkit_integration_available}
+        """)
+        
+        # Mostrar variáveis de sessão
+        if st.checkbox("Mostrar variáveis de sessão"):
+            st.write("### Session State")
+            session_state_dict = {k: v for k, v in st.session_state.items() 
+                                if not k.startswith('_') and k not in ['firebase_token', 'google_access_token']}
+            st.json(session_state_dict)
+
+elif 'firebase_user' not in st.session_state or st.session_state.firebase_user is None:
+    # Usuário não autenticado - mostrar tela de boas-vindas
+    st.header("Bem-vindo ao Calendário IA!")
     
     # Usar colunas para layout mais organizado
     col1, col2 = st.columns([3, 2])
@@ -648,169 +742,4 @@ else:
         # Firebase Config
         st.subheader("Configuração do Firebase")
         firebase_auth.firebase_config_component(form_key_suffix="config_tab")
-
-# Segunda aba - Configuração de E-mail/Senha (para usuários avançados)
-with auth_tab:
-    st.write("### Opções de Autenticação")
-    
-    # Duas colunas para os dois tipos de autenticação
-    col1, col2 = st.columns(2)
-    
-    # Coluna 1: Modo Demonstração (Anônimo)
-    with col1:
-        st.success("""
-        ### ✅ Modo Demonstração
-        
-        Acesse rapidamente uma versão limitada do aplicativo:
-        - Interface simplificada
-        - Sem necessidade de login
-        - Funcionalidades básicas
-        """)
-        
-        # Botão para modo anônimo
-        if st.button("🚀 Iniciar Modo Demonstração", use_container_width=True, type="primary",
-                  help="Acesse uma versão limitada do aplicativo para demonstração."):
-            try:
-                # Criar um ID único para o usuário anônimo
-                anonymous_id = str(uuid.uuid4())
-                
-                # Criar um objeto de usuário simulado
-                anonymous_user = {
-                    'localId': anonymous_id,
-                    'displayName': 'Usuário Demonstração',
-                    'email': f'anonimo_{anonymous_id[:8]}@exemplo.com',
-                    'emailVerified': False,
-                    'isAnonymous': True,
-                    'providerUserInfo': [{'providerId': 'anonymous'}],
-                    'lastLoginAt': str(int(time.time() * 1000)),
-                    'createdAt': str(int(time.time() * 1000))
-                }
-                
-                # Criando um token simulado (apenas para fins de demonstração)
-                mock_token = f"demo_token_{anonymous_id}"
-                
-                # Salvar na sessão
-                st.session_state.firebase_user = anonymous_user
-                st.session_state.firebase_token = mock_token
-                st.session_state.is_anonymous = True
-                
-                st.success("Modo demonstração ativado!")
-                st.rerun()
-            except Exception as e:
-                st.error(f"Erro ao ativar modo demonstração: {str(e)}")
-    
-    # Coluna 2: Login com Google
-    with col2:
-        st.info("""
-        ### 🔐 Login com Google
-        
-        Acesse todas as funcionalidades:
-        - Integração com Google Calendar
-        - Recursos avançados
-        - Assistente IA completo
-        """)
-        
-        # Botão para login com Google
-        if st.button("Login com Google", use_container_width=True, key="google_auth_main"):
-            try:
-                # Preparar os valores de configuração do Firebase
-                api_key = DEFAULT_FIREBASE_CONFIG["apiKey"]
-                auth_domain = DEFAULT_FIREBASE_CONFIG["authDomain"]
-                project_id = DEFAULT_FIREBASE_CONFIG["projectId"]
-                
-                # HTML para autenticação com Google
-                google_auth_html = f"""
-                <div id="google_auth_result" style="display:none;"></div>
-                <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-                <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-                
-                <script>
-                // Configurar Firebase
-                const firebaseConfig = {{
-                    apiKey: "{api_key}",
-                    authDomain: "{auth_domain}",
-                    projectId: "{project_id}"
-                }};
-                firebase.initializeApp(firebaseConfig);
-                
-                // Configurar provedor Google
-                const provider = new firebase.auth.GoogleAuthProvider();
-                provider.addScope('https://www.googleapis.com/auth/calendar');
-                
-                // Iniciar login com popup
-                firebase.auth().signInWithPopup(provider)
-                    .then((result) => {{
-                        const user = result.user;
-                        const credential = result.credential;
-                        
-                        // Obter tokens
-                        const googleToken = credential.accessToken;
-                        user.getIdToken().then(idToken => {{
-                            const authData = {{
-                                firebaseUser: {{
-                                    uid: user.uid,
-                                    email: user.email,
-                                    displayName: user.displayName,
-                                    photoURL: user.photoURL,
-                                    isAnonymous: false
-                                }},
-                                firebaseToken: idToken,
-                                googleToken: googleToken
-                            }};
-                            
-                            // Enviar para Streamlit
-                            const resultElement = document.getElementById('google_auth_result');
-                            resultElement.textContent = JSON.stringify(authData);
-                            
-                            window.parent.postMessage({{
-                                type: "streamlit:setComponentValue",
-                                value: JSON.stringify(authData)
-                            }}, "*");
-                        }});
-                    }})
-                    .catch((error) => {{
-                        console.error("Erro na autenticação:", error);
-                        const errorData = {{
-                            error: error.message,
-                            code: error.code
-                        }};
-                        
-                        window.parent.postMessage({{
-                            type: "streamlit:setComponentValue",
-                            value: JSON.stringify(errorData)
-                        }}, "*");
-                    }});
-                </script>
-                """
-                
-                # Executar o componente HTML
-                auth_result = st.components.v1.html(google_auth_html, height=50)
-                
-                # Processar resultado
-                if auth_result:
-                    try:
-                        auth_data = json.loads(auth_result)
-                        
-                        if 'error' in auth_data:
-                            st.error(f"Erro na autenticação com Google: {auth_data['error']}")
-                        else:
-                            # Salvando dados do usuário na sessão
-                            st.session_state.firebase_user = auth_data['firebaseUser']
-                            st.session_state.firebase_token = auth_data['firebaseToken']
-                            st.session_state.google_access_token = auth_data.get('googleToken')
-                            
-                            st.success("Login com Google realizado com sucesso!")
-                            st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao processar resultado da autenticação: {str(e)}")
-            except Exception as e:
-                st.error(f"Erro ao iniciar autenticação com Google: {str(e)}")
-                
-    # Nota explicativa
-    st.markdown("""
-    **Observação**: O login com Google permite acesso completo à sua agenda do Google Calendar.
-    O modo demonstração oferece acesso limitado, ideal para conhecer o aplicativo sem necessidade de login.
-    """)
-
-# Firebase Config (somente na aba de configuração)
 
