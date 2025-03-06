@@ -59,4 +59,9 @@ htmlcov/
 token.json
 credentials.json
 *_credentials.json
-*_token.json 
+*_token.json
+temp_credentials.json
+.env*
+firebase-service-account*.json
+service-account*.json
+firebase-adminsdk*.json 
